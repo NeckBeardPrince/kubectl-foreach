@@ -1,4 +1,4 @@
-module github.com/ahmetb/kubectl-foreach
+module github.com/NeckBeardPrince/kubectl-foreach
 
 go 1.27.3
 
