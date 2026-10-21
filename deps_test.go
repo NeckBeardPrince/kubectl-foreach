@@ -17,6 +17,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -25,7 +26,7 @@ import (
 	"testing"
 	"testing/iotest"
 
-	"github.com/jwalton/gchalk"
+	"github.com/charmbracelet/colorprofile"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -59,16 +60,26 @@ func (s *syncBuf) String() string {
 	return s.b.String()
 }
 
-// gchalk: guards the color table against upstream behavior changes.
-func Test_colors_gchalk(t *testing.T) {
+// lipgloss + colorprofile: guards the color table against upstream behavior changes.
+func Test_colors_lipgloss(t *testing.T) {
 	require.NotEmpty(t, colors)
 	for i, c := range colors {
-		assert.Contains(t, c("ctx-%d", i), "ctx-", "color %d must keep the text", i)
+		assert.Contains(t, c(fmt.Sprintf("ctx-%d", i)), "ctx-", "color %d must keep the text", i)
 	}
+	// a context name with a percent sign must survive untouched (not a format string)
+	assert.Contains(t, colors[0]("a%sb"), "a%sb")
 
-	forced := gchalk.New(gchalk.ForceLevel(gchalk.LevelBasic))
-	assert.Equal(t, "\x1b[31mx\x1b[39m", forced.WithRed().Sprintf("x"))
-	assert.Equal(t, "x", gchalk.New(gchalk.ForceLevel(gchalk.LevelNone)).WithRed().Sprintf("x"))
+	styled := style(red8, noColor)("x")
+	require.Contains(t, styled, "\x1b[", "lipgloss Render always emits ANSI")
+
+	var plain, color bytes.Buffer
+	_, err := (&colorprofile.Writer{Forward: &plain, Profile: colorprofile.NoTTY}).Write([]byte(styled))
+	require.NoError(t, err)
+	assert.Equal(t, "x", plain.String(), "non-TTY output must have ANSI stripped")
+
+	_, err = (&colorprofile.Writer{Forward: &color, Profile: colorprofile.ANSI}).Write([]byte(styled))
+	require.NoError(t, err)
+	assert.Contains(t, color.String(), "\x1b[")
 }
 
 func Test_kubeContexts(t *testing.T) {
