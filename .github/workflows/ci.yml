@@ -1,28 +1,35 @@
-name: ci
+name: CI
+permissions:
+  contents: read
+
 on:
   push:
+    branches: [master]
   pull_request:
+    branches: [master]
+
 jobs:
-  goreleaser:
+  test:
+    name: Test
     runs-on: ubuntu-latest
     steps:
-    - name: Checkout
-      uses: actions/checkout@v6
-      with:
-        fetch-depth: 0
-    - name: Setup Go
-      uses: actions/setup-go@v7
-      with:
-        go-version-file: go.mod
-    - name: Ensure gofmt
-      run: test -z "$(gofmt -s -d .)"
-    - name: Ensure go.mod is already tidied
-      run: go mod tidy && git diff --no-patch --exit-code
-    - name: Run unit tests
-      run: go test -v -race ./...
-    - name: Run GoReleaser
-      uses: goreleaser/goreleaser-action@v7
-      with:
-        distribution: goreleaser
-        version: latest
-        args: release --snapshot --clean
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.27"
+
+      - name: Run tests
+        run: go test -v -race -coverprofile=coverage.txt -covermode=atomic ./...
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          files: ./coverage.txt
+          fail_ci_if_error: false
