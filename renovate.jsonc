@@ -1,40 +1,108 @@
 {
+  // Schema validation for IDE support and error checking
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  // best-practices = recommended + GitHub Action digest pinning + config migration + more
+
+  // Start with Renovate's opinionated best practices as baseline
   "extends": ["config:best-practices"],
+
+  // === ASSIGNMENT & REVIEW ===
+  // Who gets assigned to dependency PRs
+  "assignees": ["NeckBeardPrince"],
+
+  // === SCHEDULING & TIMING ===
+  // Use your actual timezone for better scheduling
   "timezone": "America/Chicago",
-  "schedule": ["before 6am on monday"],
+  // Only run updates on weekend mornings (less disruptive)
+  "schedule": ["after 9am every weekend"],
+  // Wait 7 days after release before updating (let others find the bugs first)
+  "minimumReleaseAge": "7 days",
+
+  // === PERFORMANCE & CI OPTIMIZATION ===
+  // Limit concurrent PRs to avoid overwhelming CI
+  "prConcurrentLimit": 3,
+  "branchConcurrentLimit": 5,
+  // Don't spam PRs if CI is broken
+  "stopUpdatingLabel": "stop-updates",
+  "rebaseWhen": "behind-base-branch",
+
+  // === PR CUSTOMIZATION ===
+  // Better commit messages and PR titles
+  "commitMessageTopic": "{{depName}}",
+  "commitMessageExtra": "({{currentVersion}} → {{newVersion}})",
+  // "prTitle": "⬆️ {{commitMessageTopic}}{{{commitMessageExtra}}}",
+  // Include changelogs in PRs for better context
+  "fetchChangeLogs": "pr",
+
+  // === DEPENDENCY DASHBOARD ===
+  // Get a nice overview issue with all pending updates
+  "dependencyDashboard": true,
+  "dependencyDashboardTitle": "🤖 Dependency Dashboard",
+
+  // === DEFAULT LABELS ===
   "labels": ["dependencies"],
-  "commitMessagePrefix": "chore(deps):",
-  "prConcurrentLimit": 5,
-  // supply chain: wait before adopting brand new releases
-  "minimumReleaseAge": "3 days",
-  "postUpdateOptions": ["gomodTidy", "gomodUpdateImportPaths"],
+
+  // Run `go mod tidy` after Go module updates so go.mod/go.sum stay consistent
+  "postUpdateOptions": ["gomodTidy"],
+
+  // === SECURITY UPDATES ===
+  // Security updates are special - no waiting, immediate action
   "vulnerabilityAlerts": {
-    // security fixes bypass the schedule and release-age wait
+    "labels": ["type:security"],
+    // Security fixes bypass the weekend schedule
     "schedule": ["at any time"],
-    "minimumReleaseAge": null,
-    "labels": ["dependencies", "security"]
+    "minimumReleaseAge": null // Skip the 7-day wait for security fixes
   },
+
   "packageRules": [
+    // === SECURITY TOOLING (fast-track) ===
+    // harden-runner protects CI; keep it current with minimal delay
     {
-      "description": "Group and automerge non-major GitHub Action updates (checks must pass)",
+      "matchDepNames": ["step-security/harden-runner"],
+      "minimumReleaseAge": "1 day",
+      "automerge": true,
+      "addLabels": ["security-tooling"]
+    },
+
+    // === LANGUAGE-SPECIFIC LABELS ===
+    // Add language-specific labels for easy filtering
+    { "matchCategories": ["golang"], "addLabels": ["go"] },
+    { "matchCategories": ["github-actions"], "addLabels": ["github-actions"] },
+
+    // === MAJOR VERSION HANDLING ===
+    // Give major updates special treatment - they need human review
+    {
+      "matchUpdateTypes": ["major"],
+      "addLabels": ["major-update", "needs-review"],
+      "prPriority": 10, // Higher priority so they don't get buried
+      "minimumReleaseAge": "14 days", // Extra aging for major versions
+      "automerge": false // Never auto-merge major updates
+    },
+
+    // === SAFE UPDATES (AUTO-MERGE) ===
+    // Auto-merge safe updates (minor/patch/digests) - major versions need human review
+    {
+      "matchUpdateTypes": ["minor", "patch", "digest", "lockFileMaintenance"],
+      "automerge": true
+    },
+
+    // === GITHUB ACTIONS ===
+    // Group non-major action updates into one PR and auto-merge it.
+    // harden-runner is excluded so its fast-track rule above keeps its own PR.
+    {
       "matchManagers": ["github-actions"],
-      "matchUpdateTypes": ["minor", "patch", "digest", "pin", "pinDigest"],
-      "groupName": "github-actions",
+      "matchPackageNames": ["!step-security/harden-runner"],
+      "matchUpdateTypes": ["minor", "patch", "digest"],
+      "groupName": "github actions",
       "automerge": true
     },
+
+    // === LANGUAGE-SPECIFIC GROUPING ===
+    // Group Go updates together and auto-merge safe ones
     {
-      "description": "Automerge non-major Go module updates (checks must pass)",
-      "matchManagers": ["gomod"],
-      "matchUpdateTypes": ["minor", "patch"],
+      "matchCategories": ["golang"],
+      "matchUpdateTypes": ["minor", "patch", "digest", "lockFileMaintenance"],
+      "groupName": "golang", // Single PR for all Go updates
       "automerge": true
-    },
-    {
-      "description": "Keep golang.org/x/* in one PR",
-      "matchManagers": ["gomod"],
-      "matchPackageNames": ["golang.org/x/**"],
-      "groupName": "golang.org/x"
     }
   ]
 }
