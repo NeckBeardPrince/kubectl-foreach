@@ -1,29 +1,53 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+
 version: 2
+
+project_name: kubectl-foreach
+
 before:
   hooks:
-  - go mod download
+    - go mod download
+
 builds:
-- id: kubectl-foreach
-  main: .
-  binary: kubectl-foreach
-  env:
-  - CGO_ENABLED=0
-  goos:
-  - linux
-  - darwin
-  - windows
-  goarch:
-  - amd64
-  - arm64
-  ignore:
-  - goos: windows
-    goarch: arm64
+  - id: kubectl-foreach
+    main: .
+    binary: kubectl-foreach
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w
 
 archives:
-- builds:
-  - kubectl-foreach
-  name_template: "{{ .ProjectName }}_{{ .Tag }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
-  wrap_in_directory: false
-  format: tar.gz
-  files:
-  - LICENSE
+  - formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    name_template: "{{ .ProjectName }}_{{ .Tag }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
+    files:
+    - LICENSE
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - '^chore(\(.+\))?:'
+      - Merge pull request
+      - Merge branch
