@@ -1,0 +1,77 @@
+[tools]
+go = "1.27.3"
+golangci-lint = "latest"
+pre-commit = "latest"
+"go:golang.org/x/tools/cmd/goimports" = "latest"
+
+[env]
+BINARY_NAME = "kubectl-foreach"
+CGO_ENABLED = "0"
+
+[tasks.build]
+description = "Build the binary"
+run = 'go build -ldflags "-s -w" -o "$BINARY_NAME"'
+
+[tasks.install]
+description = "Install to GOPATH/bin"
+run = 'go install -ldflags "-s -w"'
+
+[tasks.test]
+description = "Run tests"
+run = "go test -v -race -coverprofile=coverage.txt -covermode=atomic ./..."
+
+[tasks.lint]
+description = "Run linters"
+run = "golangci-lint run"
+
+[tasks.fmt]
+description = "Format code"
+run = ["go fmt ./...", "goimports -w ."]
+
+[tasks.clean]
+description = "Remove build artifacts"
+run = 'rm -f "$BINARY_NAME" coverage.txt kubectl-foreach-*'
+
+[tasks.run]
+description = "Build and run"
+depends = ["build"]
+run = './"$BINARY_NAME"'
+
+[tasks.build-linux]
+description = "Build for Linux"
+env = { GOOS = "linux", GOARCH = "amd64" }
+run = 'go build -ldflags "-s -w" -o "$BINARY_NAME-linux-amd64"'
+
+[tasks.build-darwin]
+description = "Build for macOS"
+run = [
+  'GOOS=darwin GOARCH=amd64 go build -ldflags "-s -w" -o "$BINARY_NAME-darwin-amd64"',
+  'GOOS=darwin GOARCH=arm64 go build -ldflags "-s -w" -o "$BINARY_NAME-darwin-arm64"',
+]
+
+[tasks.build-windows]
+description = "Build for Windows"
+env = { GOOS = "windows", GOARCH = "amd64" }
+run = 'go build -ldflags "-s -w" -o "$BINARY_NAME-windows-amd64.exe"'
+
+[tasks.build-all]
+description = "Build for all platforms"
+depends = ["build-linux", "build-darwin", "build-windows"]
+
+[tasks.release]
+description = "Create release artifacts"
+depends = ["clean", "build-all"]
+run = [
+  'tar czf "$BINARY_NAME-linux-amd64.tar.gz" "$BINARY_NAME-linux-amd64"',
+  'tar czf "$BINARY_NAME-darwin-amd64.tar.gz" "$BINARY_NAME-darwin-amd64"',
+  'tar czf "$BINARY_NAME-darwin-arm64.tar.gz" "$BINARY_NAME-darwin-arm64"',
+  'zip "$BINARY_NAME-windows-amd64.zip" "$BINARY_NAME-windows-amd64.exe"',
+]
+
+[tasks.pre-commit-install]
+description = "Install pre-commit hooks"
+run = ["pre-commit install", "pre-commit install --hook-type commit-msg"]
+
+[tasks.pre-commit-run]
+description = "Run pre-commit on all files"
+run = "pre-commit run --all-files"

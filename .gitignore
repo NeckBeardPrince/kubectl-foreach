@@ -7,3 +7,8 @@
 
 # local scratch data (internal hostnames), never commit
 /*.txt
+
+# local builds (mise run build / build-all)
+/kubectl-foreach
+/kubectl-foreach-*
+/coverage.txt
