@@ -20,6 +20,9 @@ Patterns can be used to match context names from kubeconfig:
 Options:
     -c=NUM     Limit parallel executions (default: 0, unlimited)
     -I=VAL     Replace VAL occurring in KUBECTL_ARGS with context name
+    -o=FORMAT  Output format: stream (default), table, csv, markdown
+    -H         With -o table/csv/markdown: first output line of each context
+               is a header (kept once)
     -q         Disable and accept confirmation prompts ($KUBECTL_FOREACH_DISABLE_PROMPTS) 
     -h/--help  Print help
 ```
@@ -90,6 +93,23 @@ kubectl foreach -I _ -- my_plugin -ctx=_
 ```
 kubectl foreach -c 3 /^gke-/
 ```
+
+**Structured output:** Collect results from every context into one table, CSV,
+or Markdown document. Output is split into columns on tabs (or on runs of 2+
+spaces, like `kubectl get`), and a `CONTEXT` column is added. Use `-H` when the
+command prints a header line (it is kept once instead of once per context).
+Prefer `custom-columns` or `jsonpath` with tabs for clean columns:
+
+```
+kubectl foreach -q -o csv -H /prod/ -- get pods -A \
+  -o custom-columns=NS:.metadata.namespace,NAME:.metadata.name > pods.csv
+
+kubectl foreach -q -o markdown -H -- get ingress -A \
+  -o custom-columns='NS:.metadata.namespace,NAME:.metadata.name,HOSTS:.spec.rules[*].host'
+```
+
+Colors are stripped automatically when output is piped or redirected.
+`stderr` (warnings, errors) still streams live, prefixed with the context.
 
 ## Install
 

@@ -1,4 +1,4 @@
-// Copyright 2022 Twitter, Inc.
+// Copyright 2022 Twitter, Inc
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,47 +14,81 @@
 
 package main
 
-import "github.com/jwalton/gchalk"
+import "charm.land/lipgloss/v2"
 
-var chalk = gchalk.New()
+// ANSI palette indexes.
+const (
+	black = iota
+	red8
+	green8
+	yellow8
+	blue8
+	magenta8
+	cyan8
+	white8
+	gray8
+	brightRed
+	brightGreen
+	brightYellow
+	brightBlue
+	brightMagenta
+	brightCyan
+	brightWhite
+)
 
-var colors = []func(string, ...interface{}) string{
+// noColor marks an unset foreground/background.
+const noColor = -1
+
+func style(fg, bg int) func(string) string {
+	s := lipgloss.NewStyle()
+	if fg != noColor {
+		s = s.Foreground(lipgloss.ANSIColor(fg))
+	}
+	if bg != noColor {
+		s = s.Background(lipgloss.ANSIColor(bg))
+	}
+	return func(v string) string { return s.Render(v) }
+}
+
+// colors are the per-context prefix styles. Render always emits ANSI; the
+// colorprofile writers in main downsample or strip it for non-TTY output.
+var colors = []func(string) string{
 	// foreground only
-	chalk.WithRed().Sprintf,
-	chalk.WithBlue().Sprintf,
-	chalk.WithGreen().Sprintf,
-	chalk.WithYellow().WithBgBlack().Sprintf,
-	chalk.WithGray().Sprintf,
-	chalk.WithMagenta().Sprintf,
-	chalk.WithCyan().Sprintf,
-	chalk.WithBrightRed().Sprintf,
+	style(red8, noColor),
+	style(blue8, noColor),
+	style(green8, noColor),
+	style(yellow8, black),
+	style(gray8, noColor),
+	style(magenta8, noColor),
+	style(cyan8, noColor),
+	style(brightRed, noColor),
 
-	chalk.WithBrightBlue().Sprintf,
-	chalk.WithBrightGreen().Sprintf,
-	chalk.WithBrightMagenta().Sprintf,
-	chalk.WithBrightYellow().WithBgBlack().Sprintf,
-	chalk.WithBrightCyan().Sprintf,
+	style(brightBlue, noColor),
+	style(brightGreen, noColor),
+	style(brightMagenta, noColor),
+	style(brightYellow, black),
+	style(brightCyan, noColor),
 
 	// inverse
-	chalk.WithBgRed().WithWhite().Sprintf,
-	chalk.WithBgBlue().WithWhite().Sprintf,
-	chalk.WithBgCyan().WithBlack().Sprintf,
-	chalk.WithBgGreen().WithBlack().Sprintf,
-	chalk.WithBgMagenta().WithBrightWhite().Sprintf,
-	chalk.WithBgYellow().WithBlack().Sprintf,
-	chalk.WithBgGray().WithWhite().Sprintf,
-	chalk.WithBgBrightRed().WithWhite().Sprintf,
-	chalk.WithBgBrightBlue().WithWhite().Sprintf,
-	chalk.WithBgBrightCyan().WithBlack().Sprintf,
-	chalk.WithBgBrightGreen().WithBlack().Sprintf,
-	chalk.WithBgBrightMagenta().WithBlack().Sprintf,
-	chalk.WithBgBrightYellow().WithBlack().Sprintf,
+	style(white8, red8),
+	style(white8, blue8),
+	style(black, cyan8),
+	style(black, green8),
+	style(brightWhite, magenta8),
+	style(black, yellow8),
+	style(white8, gray8),
+	style(white8, brightRed),
+	style(white8, brightBlue),
+	style(black, brightCyan),
+	style(black, brightGreen),
+	style(black, brightMagenta),
+	style(black, brightYellow),
 
 	// mixes+inverses
-	chalk.WithBgRed().WithYellow().Sprintf,
-	chalk.WithBgYellow().WithRed().Sprintf,
-	chalk.WithBgBlue().WithYellow().Sprintf,
-	chalk.WithBgYellow().WithBlue().Sprintf,
-	chalk.WithBgBlack().WithBrightWhite().Sprintf,
-	chalk.WithBgBrightWhite().WithBlack().Sprintf,
+	style(yellow8, red8),
+	style(red8, yellow8),
+	style(yellow8, blue8),
+	style(blue8, yellow8),
+	style(brightWhite, black),
+	style(black, brightWhite),
 }

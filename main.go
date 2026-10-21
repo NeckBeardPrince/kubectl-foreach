@@ -29,7 +29,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/jwalton/gchalk"
+	"github.com/charmbracelet/colorprofile"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -38,17 +38,22 @@ const (
 )
 
 var (
-	gray = gchalk.Stderr.Gray
-	red  = gchalk.Stderr.Red
+	gray = style(gray8, noColor)
+	red  = style(red8, noColor)
+
+	// stderrW is wrapped by main so colors are stripped when stderr is not a TTY
+	stderrW io.Writer = os.Stderr
 
 	fl      = flag.NewFlagSet("kubectl foreach", flag.ContinueOnError)
 	repl    = fl.String("I", "", "string to replace in cmd args with context name (like xargs -I)")
 	workers = fl.Int("c", 0, "parallel runs (default: as many as matched contexts)")
 	quiet   = fl.Bool("q", false, "accept confirmation prompts")
+	outFmt  = fl.String("o", string(formatStream), "output format: stream, table, csv, markdown")
+	header  = fl.Bool("H", false, "treat the first output line of each context as a header (table, csv, markdown)")
 )
 
 func printErrAndExit(msg string) {
-	fmt.Fprintf(os.Stderr, "%s%s\n", red("error: "), msg)
+	fmt.Fprintf(stderrW, "%s%s\n", red("error: "), msg)
 	os.Exit(1)
 }
 
@@ -66,6 +71,10 @@ Patterns can be used to match context names from kubeconfig:
 Options:
     -c=NUM     Limit parallel executions (default: 0, unlimited)
     -I=VAL     Replace VAL occurring in KUBECTL_ARGS with context name
+    -o=FORMAT  Output format: stream (default), table, csv, markdown
+    -H         With -o table/csv/markdown: first output line of each context
+               is a header (kept once). Use kubectl's custom-columns or
+               jsonpath for clean columns.
     -q         Disable and accept confirmation prompts ($KUBECTL_FOREACH_DISABLE_PROMPTS)
     -h/--help  Print help
 
@@ -80,12 +89,16 @@ Examples:
     kubectl foreach /prod/ ^/foo/ -- get nodes
 
     # use 'kubectl tail' plugin to follow logs of pods in contexts named *test*
-    kubectl foreach -I _ /test/ -- tail --context=_ -l app=foo`+"\n")
+    kubectl foreach -I _ /test/ -- tail --context=_ -l app=foo
+
+    # one CSV of all pods across prod contexts (header kept once)
+    kubectl foreach -q -o csv -H /prod/ -- get pods -A -o custom-columns=NS:.metadata.namespace,NAME:.metadata.name`+"\n")
 	os.Exit(0)
 }
 
 func main() {
-	log.SetOutput(os.Stderr)
+	stderrW = colorprofile.NewWriter(os.Stderr, os.Environ())
+	log.SetOutput(stderrW)
 	log.SetFlags(0)
 	fl.Usage = func() { printUsage(os.Stderr) }
 
@@ -106,11 +119,18 @@ func main() {
 	// initialize signal handler after
 	go func() {
 		<-ctx.Done()
-		fmt.Fprintln(os.Stderr, gray("received exit signal"))
+		fmt.Fprintln(stderrW, gray("received exit signal"))
 	}()
 
 	if *workers < 0 {
 		printErrAndExit("-c < 0")
+	}
+	format, err := parseFormat(*outFmt)
+	if err != nil {
+		printErrAndExit(err.Error())
+	}
+	if *header && !format.buffered() {
+		printErrAndExit("-H requires -o table, csv, or markdown")
 	}
 
 	ctxs, err := kubeContexts(ctx)
@@ -143,23 +163,36 @@ func main() {
 		printErrAndExit("query matched no contexts from kubeconfig")
 	}
 
-	fmt.Fprintln(os.Stderr, "Will run command in context(s):")
+	fmt.Fprintln(stderrW, "Will run command in context(s):")
 	for _, c := range ctxMatches {
-		fmt.Fprintf(os.Stderr, "%s", gray(fmt.Sprintf("  - %s\n", c)))
+		fmt.Fprint(stderrW, gray(fmt.Sprintf("  - %s\n", c)))
 	}
 	if !*quiet && os.Getenv(envDisablePrompts) == "" {
-		fmt.Fprintf(os.Stderr, "Continue? [Y/n]: ")
+		fmt.Fprintf(stderrW, "Continue? [Y/n]: ")
 		if err := prompt(ctx, os.Stdin); err != nil {
 			printErrAndExit(err.Error())
 		}
 	}
 
-	syncOut := &synchronizedWriter{Writer: os.Stdout}
-	syncErr := &synchronizedWriter{Writer: os.Stderr}
+	stdoutW := colorprofile.NewWriter(os.Stdout, os.Environ())
+	syncOut := &synchronizedWriter{Writer: stdoutW}
+	syncErr := &synchronizedWriter{Writer: stderrW}
+	argMaker := replaceArgs(kubectlArgs, *repl)
 
-	err = runAll(ctx, ctxMatches, replaceArgs(kubectlArgs, *repl), syncOut, syncErr)
-	if err != nil {
+	if !format.buffered() {
+		if err := runAll(ctx, ctxMatches, argMaker, syncOut, syncErr); err != nil {
+			printErrAndExit(err.Error())
+		}
+		return
+	}
+
+	results, runErr := runCollect(ctx, ctxMatches, argMaker, syncErr)
+	// render what we have even if some contexts failed, then report the failure
+	if err := render(stdoutW, format, *header, results); err != nil {
 		printErrAndExit(err.Error())
+	}
+	if runErr != nil {
+		printErrAndExit(runErr.Error())
 	}
 }
 
@@ -205,6 +238,31 @@ func parseContextNames(out string) []string {
 }
 
 func runAll(ctx context.Context, kubeCtxs []string, argMaker func(string) ([]string, error), stdout, stderr io.Writer) error {
+	return runEach(ctx, kubeCtxs, argMaker, stderr, func(_ string, prefix []byte) io.WriteCloser {
+		return &prefixingWriter{prefix: prefix, w: stdout}
+	})
+}
+
+// runCollect runs kubectl in every context, capturing each context's stdout
+// (stderr still streams, prefixed). Results follow kubeCtxs order.
+func runCollect(ctx context.Context, kubeCtxs []string, argMaker func(string) ([]string, error), stderr io.Writer) ([]result, error) {
+	bufs := make(map[string]*bufCloser, len(kubeCtxs))
+	for _, c := range kubeCtxs {
+		bufs[c] = &bufCloser{}
+	}
+	err := runEach(ctx, kubeCtxs, argMaker, stderr, func(kctx string, _ []byte) io.WriteCloser {
+		return bufs[kctx]
+	})
+	results := make([]result, len(kubeCtxs))
+	for i, c := range kubeCtxs {
+		results[i] = result{ctx: c, out: bufs[c].String()}
+	}
+	return results, err
+}
+
+// runEach runs kubectl once per context in parallel. outFor supplies each
+// context's stdout writer; stderr is always prefixed with the context name.
+func runEach(ctx context.Context, kubeCtxs []string, argMaker func(string) ([]string, error), stderr io.Writer, outFor func(kctx string, prefix []byte) io.WriteCloser) error {
 	n := len(kubeCtxs)
 	if *workers > 0 {
 		n = *workers
@@ -222,7 +280,7 @@ func runAll(ctx context.Context, kubeCtxs []string, argMaker func(string) ([]str
 		colFn := colors[i%len(colors)]
 		wg.Go(func() error {
 			prefix := []byte(leftPad(colFn(kctx), len(kctx)) + " | ")
-			wo := &prefixingWriter{prefix: prefix, w: stdout}
+			wo := outFor(kctx, prefix)
 			we := &prefixingWriter{prefix: prefix, w: stderr}
 			args, err := argMaker(kctx)
 			if err != nil {
