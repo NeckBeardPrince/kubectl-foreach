@@ -1,0 +1,40 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  // best-practices = recommended + GitHub Action digest pinning + config migration + more
+  "extends": ["config:best-practices"],
+  "timezone": "America/Chicago",
+  "schedule": ["before 6am on monday"],
+  "labels": ["dependencies"],
+  "commitMessagePrefix": "chore(deps):",
+  "prConcurrentLimit": 5,
+  // supply chain: wait before adopting brand new releases
+  "minimumReleaseAge": "3 days",
+  "postUpdateOptions": ["gomodTidy", "gomodUpdateImportPaths"],
+  "vulnerabilityAlerts": {
+    // security fixes bypass the schedule and release-age wait
+    "schedule": ["at any time"],
+    "minimumReleaseAge": null,
+    "labels": ["dependencies", "security"]
+  },
+  "packageRules": [
+    {
+      "description": "Group and automerge non-major GitHub Action updates (checks must pass)",
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["minor", "patch", "digest", "pin", "pinDigest"],
+      "groupName": "github-actions",
+      "automerge": true
+    },
+    {
+      "description": "Automerge non-major Go module updates (checks must pass)",
+      "matchManagers": ["gomod"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "automerge": true
+    },
+    {
+      "description": "Keep golang.org/x/* in one PR",
+      "matchManagers": ["gomod"],
+      "matchPackageNames": ["golang.org/x/**"],
+      "groupName": "golang.org/x"
+    }
+  ]
+}

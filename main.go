@@ -27,6 +27,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"strings"
+	"syscall"
 
 	"github.com/jwalton/gchalk"
 	"golang.org/x/sync/errgroup"
@@ -100,7 +101,8 @@ func main() {
 	}
 
 	ctx := context.Background()
-	ctx, _ = signal.NotifyContext(ctx, os.Interrupt)
+	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
+	defer stop()
 	// initialize signal handler after
 	go func() {
 		<-ctx.Done()
@@ -152,8 +154,6 @@ func main() {
 		}
 	}
 
-	// alert if there's already --context in kubectl args and no -I flag specified
-
 	syncOut := &synchronizedWriter{Writer: os.Stdout}
 	syncErr := &synchronizedWriter{Writer: os.Stderr}
 
@@ -171,7 +171,7 @@ func replaceArgs(args []string, repl string) func(ctx string) ([]string, error) 
 		out := make([]string, len(args))
 		modified := false
 		for i := range args {
-			out[i] = strings.Replace(args[i], repl, ctx, -1)
+			out[i] = strings.ReplaceAll(args[i], repl, ctx)
 			modified = modified || (out[i] != args[i])
 		}
 		if !modified {
@@ -189,7 +189,19 @@ func kubeContexts(ctx context.Context) ([]string, error) {
 	if err := cmd.Run(); err != nil {
 		return nil, fmt.Errorf("failed to get contexts: %w", err)
 	}
-	return strings.Split(strings.TrimSpace(b.String()), "\n"), nil
+	return parseContextNames(b.String()), nil
+}
+
+// parseContextNames splits `kubectl config get-contexts -o=name` output into
+// context names, ignoring blank lines (an empty kubeconfig yields no names).
+func parseContextNames(out string) []string {
+	var names []string
+	for _, line := range strings.Split(out, "\n") {
+		if name := strings.TrimSpace(line); name != "" {
+			names = append(names, name)
+		}
+	}
+	return names
 }
 
 func runAll(ctx context.Context, kubeCtxs []string, argMaker func(string) ([]string, error), stdout, stderr io.Writer) error {
@@ -207,9 +219,6 @@ func runAll(ctx context.Context, kubeCtxs []string, argMaker func(string) ([]str
 	}
 
 	for i, kctx := range kubeCtxs {
-		kctx := kctx
-		ctx := ctx
-		i := i
 		colFn := colors[i%len(colors)]
 		wg.Go(func() error {
 			prefix := []byte(leftPad(colFn(kctx), len(kctx)) + " | ")
@@ -219,7 +228,10 @@ func runAll(ctx context.Context, kubeCtxs []string, argMaker func(string) ([]str
 			if err != nil {
 				return err
 			}
-			return run(ctx, args, wo, we)
+			if err := run(ctx, args, wo, we); err != nil {
+				return fmt.Errorf("context %q: %w", kctx, err)
+			}
+			return nil
 		})
 	}
 	return wg.Wait()
@@ -242,7 +254,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.WriteCloser) (err
 			log.Printf("WARN: failed to close stdout: %v", err)
 		}
 		if err := stderr.Close(); err != nil {
-			log.Printf("WARN: failed to close stdout: %v", err)
+			log.Printf("WARN: failed to close stderr: %v", err)
 		}
 	}()
 	cmd := exec.CommandContext(ctx, "kubectl", args...)
@@ -255,9 +267,9 @@ func run(ctx context.Context, args []string, stdout, stderr io.WriteCloser) (err
 func prompt(ctx context.Context, r io.Reader) error {
 	pr, pw := io.Pipe()
 	go func() {
-		if _, err := io.Copy(pw, r); err != nil {
-			pw.Close()
-		}
+		// always close so the scanner sees EOF (e.g. stdin closed) instead of blocking forever
+		_, err := io.Copy(pw, r)
+		pw.CloseWithError(err)
 	}()
 	defer pw.Close()
 
@@ -303,7 +315,7 @@ func trimSuffix(a []string, suffix []string) []string {
 
 func findKubeContextArg(argv []string) (string, bool) {
 	for _, arg := range argv {
-		if strings.HasPrefix(arg, "--context") {
+		if arg == "--context" || strings.HasPrefix(arg, "--context=") {
 			return arg, true
 		}
 	}

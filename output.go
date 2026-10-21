@@ -74,11 +74,10 @@ func (s *prefixingWriter) Write(p []byte) (int, error) {
 }
 
 func (s *prefixingWriter) Close() error {
-	// TODO track double-closing?
-
 	if s.buf.Len() == 0 {
 		return nil
 	}
+	defer s.buf.Reset() // makes Close idempotent
 	_, err := s.w.Write(s.buf.Bytes())
 	if err != nil {
 		return err

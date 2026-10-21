@@ -101,7 +101,7 @@ kubectl krew install foreach
 
 You can also build from source but you won't receive new version updates:
 ```
-go install github.com/ahmetb/kubectl-foreach@latest
+go install github.com/NeckBeardPrince/kubectl-foreach@latest
 ```
 
 ## Remarks/FAQ

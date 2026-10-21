@@ -1,6 +1,6 @@
-module github.com/ahmetb/kubectl-foreach
+module github.com/NeckBeardPrince/kubectl-foreach
 
-go 1.26.0
+go 1.27.3
 
 require (
 	github.com/jwalton/gchalk v1.3.0
@@ -11,6 +11,6 @@ require (
 require (
 	github.com/jwalton/go-supportscolor v1.2.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
-	golang.org/x/sys v0.17.0 // indirect
-	golang.org/x/term v0.17.0 // indirect
+	golang.org/x/sys v0.49.0 // indirect
+	golang.org/x/term v0.47.0 // indirect
 )
