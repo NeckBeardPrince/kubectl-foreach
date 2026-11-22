@@ -1,5 +1,5 @@
 [tools]
-go = "1.27.3"
+go = "1.27.4"
 golangci-lint = "latest"
 pre-commit = "latest"
 "go:golang.org/x/tools/cmd/goimports" = "latest"
