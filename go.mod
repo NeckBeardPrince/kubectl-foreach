@@ -3,7 +3,7 @@ module github.com/NeckBeardPrince/kubectl-foreach
 go 1.27.3
 
 require (
-	charm.land/lipgloss/v2 v2.0.6
+	charm.land/lipgloss/v2 v2.1.1
 	github.com/charmbracelet/colorprofile v0.4.3
 	github.com/stretchr/testify v1.12.1
 	golang.org/x/sync v0.25.0
