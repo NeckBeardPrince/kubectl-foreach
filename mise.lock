@@ -36,7 +36,7 @@ checksum = "sha256:178ab98950ac69ab25069307dc6ade79f3816e414cce95b4da166a115cde1
 url = "https://dl.google.com/go/go1.27.4.windows-amd64.zip"
 
 [[tools."go:golang.org/x/tools/cmd/goimports"]]
-version = "0.52.0"
+version = "0.53.0"
 backend = "go:golang.org/x/tools/cmd/goimports"
 specifiers = ["latest"]
 
@@ -91,6 +91,7 @@ provenance = "github-attestations"
 version = "4.7.0"
 backend = "aqua:pre-commit/pre-commit"
 specifiers = ["latest"]
+unsupported_platforms = ["windows-x64"]
 
 [tools.pre-commit."platforms.linux-arm64"]
 checksum = "sha256:393488513aed286d7a5a978a1fe79b2f5a8802927242a2d241ff10c1a8e8c885"
